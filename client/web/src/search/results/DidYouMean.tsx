@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo } from 'react'
 
+import InformationOutlineIcon from 'mdi-react/InformationOutlineIcon'
+
 import { CaseSensitivityProps, SearchPatternTypeProps, SearchContextProps } from '@sourcegraph/search'
 import { SyntaxHighlightedSearchQuery } from '@sourcegraph/search-ui'
 import { SearchPatternType } from '@sourcegraph/shared/src/graphql-operations'
@@ -7,9 +9,10 @@ import { ALL_LANGUAGES } from '@sourcegraph/shared/src/search/query/languageFilt
 import { stringHuman } from '@sourcegraph/shared/src/search/query/printer'
 import { scanSearchQuery } from '@sourcegraph/shared/src/search/query/scanner'
 import { createLiteral, Pattern, Token } from '@sourcegraph/shared/src/search/query/token'
+import { AggregateStreamingSearchResults } from '@sourcegraph/shared/src/search/stream'
 import { TelemetryProps } from '@sourcegraph/shared/src/telemetry/telemetryService'
 import { buildSearchURLQuery } from '@sourcegraph/shared/src/util/url'
-import { Link, H3, createLinkUrl } from '@sourcegraph/wildcard'
+import { Link, H3, createLinkUrl, Tooltip, Icon } from '@sourcegraph/wildcard'
 
 import styles from './DidYouMean.module.scss'
 
@@ -120,6 +123,7 @@ interface DidYouMeanProps
         Pick<SearchContextProps, 'selectedSearchContextSpec'>,
         TelemetryProps {
     query: string
+    serverAlert: Required<AggregateStreamingSearchResults>['alert'] | null
 }
 
 export const DidYouMean: React.FunctionComponent<React.PropsWithChildren<DidYouMeanProps>> = ({
@@ -128,6 +132,7 @@ export const DidYouMean: React.FunctionComponent<React.PropsWithChildren<DidYouM
     patternType,
     caseSensitive,
     selectedSearchContextSpec,
+    serverAlert
 }) => {
     const suggestions = useMemo(() => getQuerySuggestions(query, patternType), [query, patternType])
 
@@ -136,6 +141,39 @@ export const DidYouMean: React.FunctionComponent<React.PropsWithChildren<DidYouM
             telemetryService.log('SearchDidYouMeanDisplayed')
         }
     }, [suggestions, telemetryService])
+
+    if (serverAlert) {
+        return (<div className={styles.root}>
+            <H3>
+                 Also showing results for:
+                 <Tooltip content='asdf'>
+                    <Icon
+                        size='sm'
+                        className="ml-1"
+                        as={InformationOutlineIcon}
+                        tabIndex={0}
+                        aria-label='label'
+                    />
+                </Tooltip>
+
+                 </H3>
+            <ul className={styles.container}>
+                {serverAlert?.proposedQueries?.map(entry =>
+                (<li className="mt-2" key={entry.query} >
+                        <Link
+                            to={createLinkUrl({ pathname: '/search', search: 'q='+entry.query })}
+                        >
+                            <span className={styles.suggestion}>
+                                <SyntaxHighlightedSearchQuery query={entry.query} />
+                            </span>
+                            <i>{`→ ${entry.description}`}</i>
+                        </Link>
+                    </li>)
+                )}
+            </ul>
+        </div>
+        )
+    }
 
     if (suggestions.length > 0) {
         return (

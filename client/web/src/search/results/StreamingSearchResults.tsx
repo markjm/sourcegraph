@@ -402,6 +402,7 @@ export const StreamingSearchResults: React.FunctionComponent<
                 patternType={patternType}
                 caseSensitive={caseSensitive}
                 selectedSearchContextSpec={props.selectedSearchContextSpec}
+                serverAlert={results?.alert && results.alert.kind === 'luckySearch' ? results.alert : null}
             />
 
             <div className={styles.streamingSearchResultsContainer}>
@@ -415,7 +416,7 @@ export const StreamingSearchResults: React.FunctionComponent<
                         onDidCancel={onSaveQueryModalClose}
                     />
                 )}
-                {results?.alert && (
+                {results?.alert && results.alert?.kind !== 'luckySearch' && (
                     <div className={classNames(styles.streamingSearchResultsContentCentered, 'mt-4')}>
                         <SearchAlert alert={results.alert} caseSensitive={caseSensitive} patternType={patternType} />
                     </div>

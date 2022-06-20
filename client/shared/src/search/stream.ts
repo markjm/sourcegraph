@@ -179,16 +179,16 @@ export interface Skipped {
      * - display :: we hit the display limit, so we stopped sending results from the backend.
      */
     reason:
-        | 'document-match-limit'
-        | 'shard-match-limit'
-        | 'repository-limit'
-        | 'shard-timedout'
-        | 'repository-cloning'
-        | 'repository-missing'
-        | 'excluded-fork'
-        | 'excluded-archive'
-        | 'display'
-        | 'error'
+    | 'document-match-limit'
+    | 'shard-match-limit'
+    | 'repository-limit'
+    | 'shard-timedout'
+    | 'repository-cloning'
+    | 'repository-missing'
+    | 'excluded-fork'
+    | 'excluded-archive'
+    | 'display'
+    | 'error'
     /**
      * A short message. eg 1,200 timed out.
      */
@@ -219,6 +219,7 @@ export interface Filter {
 interface Alert {
     title: string
     description?: string | null
+    kind? : string | null
     proposedQueries: ProposedQuery[] | null
 }
 
