@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -290,6 +291,119 @@ func TestScanFullRepoPermissions(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, perms); diff != "" {
 		t.Fatal(diff)
+	}
+}
+
+func TestScanFullRepoPermissionsWithWildcardMatchingDepot(t *testing.T) {
+	f, err := os.Open("testdata/sample-protects-m.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rc := io.NopCloser(bytes.NewReader(data))
+
+	execer := p4ExecFunc(func(ctx context.Context, host, user, password string, args ...string) (io.ReadCloser, http.Header, error) {
+		return rc, nil, nil
+	})
+
+	p := NewTestProvider("", "ssl:111.222.333.444:1666", "admin", "password", execer)
+	p.depots = []extsvc.RepoID{
+		"//app/main/core/",
+	}
+	perms := &authz.ExternalUserPermissions{
+		SubRepoPermissions: make(map[extsvc.RepoID]*authz.SubRepoPermissions),
+	}
+	if err := scanProtects(rc, fullRepoPermsScanner(perms, p.depots)); err != nil {
+		t.Fatal(err)
+	}
+
+	want := &authz.ExternalUserPermissions{
+		Exacts: []extsvc.RepoID{
+			"//app/main/core/",
+		},
+		SubRepoPermissions: map[extsvc.RepoID]*authz.SubRepoPermissions{
+			"//app/main/core/": {
+				PathIncludes: []string{
+					mustGlobPattern(t, "**"),
+				},
+				PathExcludes: []string{
+					mustGlobPattern(t, "**"),
+					mustGlobPattern(t, "core/build/deleteorgs.txt"),
+					mustGlobPattern(t, "build/deleteorgs.txt"),
+					mustGlobPattern(t, "core/build/**/asdf.txt"),
+					mustGlobPattern(t, "build/**/asdf.txt"),
+				},
+			},
+		},
+	}
+
+	if diff := cmp.Diff(want, perms); diff != "" {
+		t.Fatal(diff)
+	}
+}
+
+func TestCheckWildcardDepotMatch(t *testing.T) {
+	testDepot := extsvc.RepoID("//app/main/core/")
+	testCases := []struct {
+		label              string
+		pattern            string
+		original           string
+		expectedNewRules   []string
+		expectedFoundMatch bool
+	}{
+		{
+			label:            "single wildcard in depot match",
+			pattern:          "//app/**/core/build/deleteorgs.txt",
+			original:         "//app/.../core/build/deleteorgs.txt",
+			expectedNewRules: []string{"core/build/deleteorgs.txt", "build/deleteorgs.txt"},
+		},
+		{
+			label:            "ends with wildcard",
+			pattern:          "//app/**",
+			original:         "//app/...",
+			expectedNewRules: []string{"**"},
+		},
+		{
+			label:            "two wildcards",
+			pattern:          "//app/**/tests/**/my_test",
+			original:         "//app/.../test/.../my_test",
+			expectedNewRules: []string{"tests/**/my_test"},
+		},
+		{
+			label:            "no match no effect",
+			pattern:          "//foo/**/core/build/asdf.txt",
+			original:         "//foo/.../core/build/asdf.txt",
+			expectedNewRules: []string{},
+		},
+		{
+			label:            "todo",
+			pattern:          "//**/.secrets.env",
+			original:         "//.../.secrets.env",
+			expectedNewRules: []string{},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.label, func(t *testing.T) {
+			pattern := tc.pattern
+			glob := mustGlob(t, pattern)
+			rule := globMatch{
+				glob,
+				pattern,
+				tc.original,
+			}
+			newRules := checkForWildcardDepotMatch(rule, testDepot)
+			if !reflect.DeepEqual(newRules, tc.expectedNewRules) {
+				t.Errorf("expected %v, got %v", tc.expectedNewRules, newRules)
+			}
+		})
 	}
 }
 

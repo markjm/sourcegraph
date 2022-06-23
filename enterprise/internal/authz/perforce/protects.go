@@ -3,6 +3,7 @@ package perforce
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"strings"
 
@@ -392,7 +393,12 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 				}
 
 				if len(srp.PathIncludes) > 0 {
-					srp.PathExcludes = append(srp.PathExcludes, match.pattern)
+					rulesToAdd := checkForWildcardDepotMatch(match, depot)
+					if len(rulesToAdd) != 0 {
+						srp.PathExcludes = append(srp.PathExcludes, rulesToAdd...)
+					} else {
+						srp.PathExcludes = append(srp.PathExcludes, match.pattern)
+					}
 				}
 
 				var i int
@@ -446,6 +452,39 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 			return nil
 		},
 	}
+}
+
+func checkForWildcardDepotMatch(match globMatch, depot extsvc.RepoID) []string {
+	if !strings.Contains(match.pattern, "**") {
+		return []string{}
+	}
+	trimmedRule := strings.TrimPrefix(match.pattern, "//")
+	trimmedDepot := strings.TrimSuffix(strings.TrimPrefix(string(depot), "//"), "/")
+	parts := strings.Split(trimmedRule, "/")
+	newRules := make([]string, 0, len(parts))
+	depotOnlyMatchesDoubleWildcard := true
+	for i := range parts {
+		maybeDepotMatch := strings.Join(parts[:i+1], "/")
+		maybePathRule := strings.Join(parts[i+1:], "/")
+		depotMatchGlob, err := glob.Compile(maybeDepotMatch, '/')
+		if err != nil {
+			log15.Warn(fmt.Sprintf("error compiling %s to glob: %v", maybeDepotMatch, err))
+			continue
+		}
+		if depotMatchGlob.Match(trimmedDepot) {
+			if maybeDepotMatch != "**" {
+				depotOnlyMatchesDoubleWildcard = false
+			}
+			if maybePathRule == "" {
+				maybePathRule = "**"
+			}
+			newRules = append(newRules, maybePathRule)
+		}
+	}
+	if depotOnlyMatchesDoubleWildcard {
+		return []string{}
+	}
+	return newRules
 }
 
 // allUsersScanner converts `p4 protects` to a map of users within the protection rules.
