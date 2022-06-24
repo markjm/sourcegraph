@@ -393,8 +393,7 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 				}
 
 				if len(srp.PathIncludes) > 0 {
-					rulesToAdd := checkForWildcardDepotMatch(match, depot)
-					if len(rulesToAdd) != 0 {
+					if rulesToAdd := convertRulesForWildcardDepotMatch(match, depot); len(rulesToAdd) != 0 {
 						srp.PathExcludes = append(srp.PathExcludes, rulesToAdd...)
 					} else {
 						srp.PathExcludes = append(srp.PathExcludes, match.pattern)
@@ -454,7 +453,7 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 	}
 }
 
-func checkForWildcardDepotMatch(match globMatch, depot extsvc.RepoID) []string {
+func convertRulesForWildcardDepotMatch(match globMatch, depot extsvc.RepoID) []string {
 	if !strings.Contains(match.pattern, "**") {
 		return []string{}
 	}
@@ -482,6 +481,7 @@ func checkForWildcardDepotMatch(match globMatch, depot extsvc.RepoID) []string {
 		}
 	}
 	if depotOnlyMatchesDoubleWildcard {
+		// in this case, the original rule will work fine, so no need to convert.
 		return []string{}
 	}
 	return newRules

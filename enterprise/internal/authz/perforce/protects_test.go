@@ -399,7 +399,7 @@ func TestCheckWildcardDepotMatch(t *testing.T) {
 				pattern,
 				tc.original,
 			}
-			newRules := checkForWildcardDepotMatch(rule, testDepot)
+			newRules := convertRulesForWildcardDepotMatch(rule, testDepot)
 			if !reflect.DeepEqual(newRules, tc.expectedNewRules) {
 				t.Errorf("expected %v, got %v", tc.expectedNewRules, newRules)
 			}
