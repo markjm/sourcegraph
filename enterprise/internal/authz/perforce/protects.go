@@ -362,7 +362,11 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 				// Grant access to specified paths
 				for _, depot := range depots {
 					srp := getSubRepoPerms(depot)
-					srp.PathIncludes = append(srp.PathIncludes, match.pattern)
+					if rulesToAdd := convertRulesForWildcardDepotMatch(match, depot); len(rulesToAdd) != 0 {
+						srp.PathIncludes = append(srp.PathIncludes, rulesToAdd...)
+					} else {
+						srp.PathIncludes = append(srp.PathIncludes, match.pattern)
+					}
 
 					var i int
 					for _, exclude := range srp.PathExcludes {
@@ -454,7 +458,7 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 }
 
 func convertRulesForWildcardDepotMatch(match globMatch, depot extsvc.RepoID) []string {
-	if !strings.Contains(match.pattern, "**") {
+	if !strings.Contains(match.pattern, "**") && !strings.Contains(match.pattern, "*") {
 		return []string{}
 	}
 	trimmedRule := strings.TrimPrefix(match.pattern, "//")
@@ -474,8 +478,13 @@ func convertRulesForWildcardDepotMatch(match globMatch, depot extsvc.RepoID) []s
 			if maybeDepotMatch != "**" {
 				depotOnlyMatchesDoubleWildcard = false
 			}
-			if maybePathRule == "" {
-				maybePathRule = "**"
+			// special case: depot match ends with **
+			if strings.HasSuffix(maybeDepotMatch, "**") {
+				if maybePathRule == "" {
+					maybePathRule = "**"
+				} else {
+					maybePathRule = fmt.Sprintf("**/%s", maybePathRule)
+				}
 			}
 			newRules = append(newRules, maybePathRule)
 		}

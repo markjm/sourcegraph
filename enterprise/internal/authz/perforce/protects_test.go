@@ -254,10 +254,10 @@ func TestScanFullRepoPermissions(t *testing.T) {
 					mustGlobPattern(t, "core/..."),
 					mustGlobPattern(t, "*/stuff/..."),
 					mustGlobPattern(t, "frontend/.../stuff/*"),
-					mustGlobPattern(t, "*/main/config.yaml"),
+					mustGlobPattern(t, "config.yaml"),
 					mustGlobPattern(t, "subdir/**"),
-					mustGlobPattern(t, "app/.../README.md"),
-					mustGlobPattern(t, "app/*/dir.yaml"),
+					mustGlobPattern(t, ".../README.md"),
+					mustGlobPattern(t, "dir.yaml"),
 				},
 				PathExcludes: []string{
 					mustGlobPattern(t, "subdir/remove/"),
@@ -268,8 +268,8 @@ func TestScanFullRepoPermissions(t *testing.T) {
 			"//app/test/": {
 				PathIncludes: []string{
 					mustGlobPattern(t, "..."),
-					mustGlobPattern(t, "app/.../README.md"),
-					mustGlobPattern(t, "app/*/dir.yaml"),
+					mustGlobPattern(t, ".../README.md"),
+					mustGlobPattern(t, "dir.yaml"),
 				},
 				PathExcludes: []string{
 					mustGlobPattern(t, ".../.secrets.env"),
@@ -278,8 +278,8 @@ func TestScanFullRepoPermissions(t *testing.T) {
 			"//app/training/": {
 				PathIncludes: []string{
 					mustGlobPattern(t, "..."),
-					mustGlobPattern(t, "app/.../README.md"),
-					mustGlobPattern(t, "app/*/dir.yaml"),
+					mustGlobPattern(t, ".../README.md"),
+					mustGlobPattern(t, "dir.yaml"),
 				},
 				PathExcludes: []string{
 					mustGlobPattern(t, "secrets/..."),
@@ -335,10 +335,62 @@ func TestScanFullRepoPermissionsWithWildcardMatchingDepot(t *testing.T) {
 				},
 				PathExcludes: []string{
 					mustGlobPattern(t, "**"),
-					mustGlobPattern(t, "core/build/deleteorgs.txt"),
+					mustGlobPattern(t, "**/core/build/deleteorgs.txt"),
 					mustGlobPattern(t, "build/deleteorgs.txt"),
-					mustGlobPattern(t, "core/build/**/asdf.txt"),
+					mustGlobPattern(t, "**/core/build/**/asdf.txt"),
 					mustGlobPattern(t, "build/**/asdf.txt"),
+				},
+			},
+		},
+	}
+
+	if diff := cmp.Diff(want, perms); diff != "" {
+		t.Fatal(diff)
+	}
+}
+
+func TestFullScanWildcardDepotMatching(t *testing.T) {
+	f, err := os.Open("testdata/sample-protects-x.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	rc := io.NopCloser(bytes.NewReader(data))
+
+	execer := p4ExecFunc(func(ctx context.Context, host, user, password string, args ...string) (io.ReadCloser, http.Header, error) {
+		return rc, nil, nil
+	})
+
+	p := NewTestProvider("", "ssl:111.222.333.444:1666", "admin", "password", execer)
+	p.depots = []extsvc.RepoID{
+		"//app/236/freeze/core/",
+	}
+	perms := &authz.ExternalUserPermissions{
+		SubRepoPermissions: make(map[extsvc.RepoID]*authz.SubRepoPermissions),
+	}
+	if err := scanProtects(rc, fullRepoPermsScanner(perms, p.depots)); err != nil {
+		t.Fatal(err)
+	}
+
+	want := &authz.ExternalUserPermissions{
+		Exacts: []extsvc.RepoID{
+			"//app/236/freeze/core/",
+		},
+		SubRepoPermissions: map[extsvc.RepoID]*authz.SubRepoPermissions{
+			"//app/236/freeze/core/": {
+				PathExcludes: nil,
+				PathIncludes: []string{
+					mustGlobPattern(t, "db/upgrade-scripts-sfsql/**"),
+					mustGlobPattern(t, "db/sayonaradb/upgrade-scripts/**"),
+					mustGlobPattern(t, "sfdc/config/sayonara_schema.xml"),
+					mustGlobPattern(t, "db/plpgsql/**"),
 				},
 			},
 		},
@@ -357,36 +409,70 @@ func TestCheckWildcardDepotMatch(t *testing.T) {
 		original           string
 		expectedNewRules   []string
 		expectedFoundMatch bool
+		depot              extsvc.RepoID
 	}{
+		{
+			label:            "depot match ends with double wildcard",
+			pattern:          "//app/**/README.md",
+			original:         "//app/.../README.md",
+			expectedNewRules: []string{"**/README.md"},
+			depot:            "//app/test/",
+		},
+		{
+			label:            "single wildcard",
+			pattern:          "//app/*/dir.yaml",
+			original:         "//app/*/dir.yaml",
+			expectedNewRules: []string{"dir.yaml"},
+			depot:            "//app/test/",
+		},
 		{
 			label:            "single wildcard in depot match",
 			pattern:          "//app/**/core/build/deleteorgs.txt",
 			original:         "//app/.../core/build/deleteorgs.txt",
-			expectedNewRules: []string{"core/build/deleteorgs.txt", "build/deleteorgs.txt"},
+			expectedNewRules: []string{"**/core/build/deleteorgs.txt", "build/deleteorgs.txt"},
+			depot:            testDepot,
 		},
 		{
 			label:            "ends with wildcard",
 			pattern:          "//app/**",
 			original:         "//app/...",
 			expectedNewRules: []string{"**"},
+			depot:            testDepot,
 		},
 		{
 			label:            "two wildcards",
 			pattern:          "//app/**/tests/**/my_test",
 			original:         "//app/.../test/.../my_test",
-			expectedNewRules: []string{"tests/**/my_test"},
+			expectedNewRules: []string{"**/tests/**/my_test"},
+			depot:            testDepot,
 		},
 		{
 			label:            "no match no effect",
 			pattern:          "//foo/**/core/build/asdf.txt",
 			original:         "//foo/.../core/build/asdf.txt",
 			expectedNewRules: []string{},
+			depot:            testDepot,
 		},
 		{
-			label:            "todo",
+			label:            "original rule is fine, no changes needed",
 			pattern:          "//**/.secrets.env",
 			original:         "//.../.secrets.env",
 			expectedNewRules: []string{},
+			depot:            testDepot,
+		},
+		{
+			label:            "single wildcard match",
+			pattern:          "//app/2*/*/core/schema/submodules**",
+			original:         "//app/2*/*/core/schema/submodules**",
+			expectedNewRules: []string{"schema/submodules**"},
+			depot:            "//app/236/freeze/core/",
+		},
+		{
+			label:            "single wildcard match no double wildcard",
+			pattern:          "//app/2*/*/core/asdf/java/resources/foo.xml",
+			original:         "//app/2*/*/core/asdf/java/resources/foo.xml",
+			expectedNewRules: []string{"asdf/java/resources/foo.xml"},
+			depot:            "//app/236/freeze/core/",
 		},
 	}
 
@@ -399,7 +485,7 @@ func TestCheckWildcardDepotMatch(t *testing.T) {
 				pattern,
 				tc.original,
 			}
-			newRules := convertRulesForWildcardDepotMatch(rule, testDepot)
+			newRules := convertRulesForWildcardDepotMatch(rule, tc.depot)
 			if !reflect.DeepEqual(newRules, tc.expectedNewRules) {
 				t.Errorf("expected %v, got %v", tc.expectedNewRules, newRules)
 			}
