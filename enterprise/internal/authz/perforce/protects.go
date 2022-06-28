@@ -362,7 +362,7 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 				// Grant access to specified paths
 				for _, depot := range depots {
 					srp := getSubRepoPerms(depot)
-					if rulesToAdd := convertRulesForWildcardDepotMatch(match, depot); len(rulesToAdd) != 0 {
+					if rulesToAdd := convertRulesForWildcardDepotMatch(match, depot, patternsToGlob); len(rulesToAdd) != 0 {
 						srp.PathIncludes = append(srp.PathIncludes, rulesToAdd...)
 					} else {
 						srp.PathIncludes = append(srp.PathIncludes, match.pattern)
@@ -397,7 +397,7 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 				}
 
 				if len(srp.PathIncludes) > 0 {
-					if rulesToAdd := convertRulesForWildcardDepotMatch(match, depot); len(rulesToAdd) != 0 {
+					if rulesToAdd := convertRulesForWildcardDepotMatch(match, depot, patternsToGlob); len(rulesToAdd) != 0 {
 						srp.PathExcludes = append(srp.PathExcludes, rulesToAdd...)
 					} else {
 						srp.PathExcludes = append(srp.PathExcludes, match.pattern)
@@ -413,7 +413,8 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 						i++
 						continue
 					}
-					if match.Match(includeGlob.original) {
+					checkWithDepotAdded := !strings.HasPrefix(includeGlob.pattern, "//") && match.Match(string(depot)+includeGlob.pattern)
+					if match.Match(includeGlob.original) || checkWithDepotAdded {
 						srp.PathIncludes = append(srp.PathIncludes[:i], srp.PathIncludes[i+1:]...)
 					} else {
 						i++
@@ -457,7 +458,7 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 	}
 }
 
-func convertRulesForWildcardDepotMatch(match globMatch, depot extsvc.RepoID) []string {
+func convertRulesForWildcardDepotMatch(match globMatch, depot extsvc.RepoID, patternsToGlob map[string]globMatch) []string {
 	if !strings.Contains(match.pattern, "**") && !strings.Contains(match.pattern, "*") {
 		return []string{}
 	}
@@ -475,9 +476,6 @@ func convertRulesForWildcardDepotMatch(match globMatch, depot extsvc.RepoID) []s
 			continue
 		}
 		if depotMatchGlob.Match(trimmedDepot) {
-			if maybeDepotMatch != "**" {
-				depotOnlyMatchesDoubleWildcard = false
-			}
 			// special case: depot match ends with **
 			if strings.HasSuffix(maybeDepotMatch, "**") {
 				if maybePathRule == "" {
@@ -485,6 +483,14 @@ func convertRulesForWildcardDepotMatch(match globMatch, depot extsvc.RepoID) []s
 				} else {
 					maybePathRule = fmt.Sprintf("**/%s", maybePathRule)
 				}
+			}
+			if maybeDepotMatch != "**" {
+				depotOnlyMatchesDoubleWildcard = false
+				newGlobMatch, err := convertToGlobMatch(maybePathRule)
+				if err != nil {
+					log15.Warn(fmt.Sprintf("error converting to glob match: %s\n", err))
+				}
+				patternsToGlob[newGlobMatch.pattern] = newGlobMatch
 			}
 			newRules = append(newRules, maybePathRule)
 		}

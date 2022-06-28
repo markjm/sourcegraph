@@ -485,7 +485,7 @@ func TestCheckWildcardDepotMatch(t *testing.T) {
 				pattern,
 				tc.original,
 			}
-			newRules := convertRulesForWildcardDepotMatch(rule, tc.depot)
+			newRules := convertRulesForWildcardDepotMatch(rule, tc.depot, map[string]globMatch{})
 			if !reflect.DeepEqual(newRules, tc.expectedNewRules) {
 				t.Errorf("expected %v, got %v", tc.expectedNewRules, newRules)
 			}
