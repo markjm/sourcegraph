@@ -362,11 +362,7 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 				// Grant access to specified paths
 				for _, depot := range depots {
 					srp := getSubRepoPerms(depot)
-					if rulesToAdd := convertRulesForWildcardDepotMatch(match, depot, patternsToGlob); len(rulesToAdd) != 0 {
-						srp.PathIncludes = append(srp.PathIncludes, rulesToAdd...)
-					} else {
-						srp.PathIncludes = append(srp.PathIncludes, match.pattern)
-					}
+					srp.PathIncludes = append(srp.PathIncludes, convertRulesForWildcardDepotMatch(match, depot, patternsToGlob)...)
 
 					var i int
 					for _, exclude := range srp.PathExcludes {
@@ -397,11 +393,7 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 				}
 
 				if len(srp.PathIncludes) > 0 {
-					if rulesToAdd := convertRulesForWildcardDepotMatch(match, depot, patternsToGlob); len(rulesToAdd) != 0 {
-						srp.PathExcludes = append(srp.PathExcludes, rulesToAdd...)
-					} else {
-						srp.PathExcludes = append(srp.PathExcludes, match.pattern)
-					}
+					srp.PathExcludes = append(srp.PathExcludes, convertRulesForWildcardDepotMatch(match, depot, patternsToGlob)...)
 				}
 
 				var i int
@@ -460,7 +452,7 @@ func fullRepoPermsScanner(perms *authz.ExternalUserPermissions, configuredDepots
 
 func convertRulesForWildcardDepotMatch(match globMatch, depot extsvc.RepoID, patternsToGlob map[string]globMatch) []string {
 	if !strings.Contains(match.pattern, "**") && !strings.Contains(match.pattern, "*") {
-		return []string{}
+		return []string{match.pattern}
 	}
 	trimmedRule := strings.TrimPrefix(match.pattern, "//")
 	trimmedDepot := strings.TrimSuffix(strings.TrimPrefix(string(depot), "//"), "/")
@@ -497,7 +489,7 @@ func convertRulesForWildcardDepotMatch(match globMatch, depot extsvc.RepoID, pat
 	}
 	if depotOnlyMatchesDoubleWildcard {
 		// in this case, the original rule will work fine, so no need to convert.
-		return []string{}
+		return []string{match.pattern}
 	}
 	return newRules
 }

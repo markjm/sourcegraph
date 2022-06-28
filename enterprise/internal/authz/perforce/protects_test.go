@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"reflect"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -450,14 +449,14 @@ func TestCheckWildcardDepotMatch(t *testing.T) {
 			label:            "no match no effect",
 			pattern:          "//foo/**/core/build/asdf.txt",
 			original:         "//foo/.../core/build/asdf.txt",
-			expectedNewRules: []string{},
+			expectedNewRules: []string{"//foo/**/core/build/asdf.txt"},
 			depot:            testDepot,
 		},
 		{
 			label:            "original rule is fine, no changes needed",
 			pattern:          "//**/.secrets.env",
 			original:         "//.../.secrets.env",
-			expectedNewRules: []string{},
+			expectedNewRules: []string{"//**/.secrets.env"},
 			depot:            testDepot,
 		},
 		{
@@ -486,8 +485,8 @@ func TestCheckWildcardDepotMatch(t *testing.T) {
 				tc.original,
 			}
 			newRules := convertRulesForWildcardDepotMatch(rule, tc.depot, map[string]globMatch{})
-			if !reflect.DeepEqual(newRules, tc.expectedNewRules) {
-				t.Errorf("expected %v, got %v", tc.expectedNewRules, newRules)
+			if diff := cmp.Diff(newRules, tc.expectedNewRules); diff != "" {
+				t.Errorf(diff)
 			}
 		})
 	}
